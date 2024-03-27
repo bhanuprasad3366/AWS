@@ -1,0 +1,59 @@
+import json
+import boto3
+
+# Create a DynamoDB resource
+dynamodb = boto3.resource('dynamodb')
+
+# Create an SNS client
+sns_client = boto3.client('sns')
+
+# Select the DynamoDB table
+table = dynamodb.Table('voter_registry')
+
+# Define the ARN of the SNS topic
+sns_topic_arn = 'arn:aws:sns:us-east-1:189653760626:projectTopic'
+
+def lambda_handler(event, context):
+    # Extract voter details from the event
+    first_name = event['firstName']
+    last_name = event['lastName']
+    aadhar_number = event['aadharNumber']
+    age = int(event['age'])
+    email = event['email']
+    
+    # Check if the age is eligible for voting
+    if age >= 18:
+        # If eligible, store the voter details in the DynamoDB table
+        response = table.put_item(
+            Item={
+                'aadhar_number': aadhar_number,
+                'first_name': first_name,
+                'last_name': last_name,
+                'age': age,
+                'email': email
+            }
+        )
+        
+        # Publish a message to the SNS topic
+        sns_client.publish(
+            TopicArn=sns_topic_arn,
+            Message=f"New voter registered: {first_name} {last_name}, Aadhar: {aadhar_number}"
+        )
+        
+        # Subscribe the voter's email address to the SNS topic
+        sns_client.subscribe(
+            TopicArn=sns_topic_arn,
+            Protocol='email',
+            Endpoint=email
+        )
+        
+        return {
+            'statusCode': 200,
+            'body': json.dumps('Registration successful!')
+        }
+    else:
+        # If not eligible, return a message indicating the ineligibility
+        return {
+            'statusCode': 400,
+            'body': json.dumps('You are not eligible to vote.')
+        }
